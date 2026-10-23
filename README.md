@@ -13,6 +13,7 @@ A lightweight native Linux application for viewing and controlling ONVIF/RTSP IP
 - ONVIF snapshots with RTSP-frame fallback
 - MP4 recording with direct H.264/HEVC video copy
 - Editable ONVIF service URL and RTSP stream URL
+- WS-Discovery scan of ONVIF cameras on active IPv4 interfaces, with selection and automatic connection
 - Detailed terminal diagnostics and concise UI status messages
 
 RTSP preview and recording do not require ONVIF. PTZ control requires a successful ONVIF connection.
@@ -66,6 +67,18 @@ The committed configuration uses `192.0.2.10`, an IANA documentation-only addres
 
 ONVIF paths, RTSP paths and ports vary between camera vendors. Both complete URLs are editable in the application.
 
+## Automatic ONVIF device discovery
+
+1. Connect the development board and camera to the same local network, and enable ONVIF/WS-Discovery on the camera.
+2. Enter the camera's ONVIF username and password in the main window.
+3. Click **Scan Devices** beside the ONVIF service URL.
+4. Wait about four seconds, select the target in the discovery dialog, and click **Use Selected Device**.
+5. The application fills in the ONVIF service URL, connects to the camera, and retrieves its RTSP stream URL when available.
+
+The scan checks active non-loopback IPv4 interfaces and sends WS-Discovery Probes over UDP multicast port 3702. Results include the device IP address, ONVIF service URL, receiving local interface and device identifier. Duplicate responses from the same device are merged automatically.
+
+WS-Discovery only locates a device and does not bypass authentication. If no device is found, verify that ONVIF discovery is enabled, UDP port 3702 is allowed by the host firewall, and both endpoints are on the same Layer 2 network. Cameras across VLANs, with discovery disabled, or without WS-Discovery support can still be configured by entering the ONVIF service URL manually.
+
 ## Run
 
 ```bash
@@ -92,6 +105,8 @@ nc -vz CAMERA_IP 554
 ```
 
 Some cameras block ICMP, so a failed ping does not prove that ONVIF or RTSP is unavailable.
+
+Automatic discovery uses local multicast, which routers normally do not forward. In a multi-interface setup, the application sends discovery requests through every active IPv4 interface and reports the matching interface in each result.
 
 ## Output and security
 

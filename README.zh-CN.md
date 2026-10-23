@@ -14,6 +14,7 @@
 - ONVIF 抓拍，不支持时回退到 RTSP 当前帧
 - MP4 录像，H.264/HEVC 视频直接复制
 - 可编辑完整 ONVIF 服务 URL 和 RTSP 视频流 URL
+- 通过 WS-Discovery 扫描本机 IPv4 网卡上的 ONVIF 摄像头，并选择后自动连接
 - 终端输出详细诊断，界面显示简短状态
 
 RTSP 预览和录像不依赖 ONVIF，PTZ 控制需要 ONVIF 成功连接。
@@ -67,6 +68,18 @@ cp .env.example .env
 
 不同厂商的 ONVIF 路径、RTSP 路径和端口可能不同，应用界面允许修改两个协议的完整 URL。
 
+## 自动扫描 ONVIF 设备
+
+1. 确保开发板和摄像头接入同一个本地网络，并在摄像头中启用 ONVIF/WS-Discovery。
+2. 在主界面填写摄像头的 ONVIF 用户名和密码。
+3. 点击“ONVIF 服务 URL”旁的 **Scan Devices**。
+4. 等待约 4 秒，在扫描窗口中选择目标设备，然后点击 **Use Selected Device**。
+5. 应用会自动填写 ONVIF 服务 URL、连接设备，并在设备支持时读取 RTSP 视频流地址。
+
+扫描会遍历开发板上活动的非回环 IPv4 网卡，通过 UDP 多播端口 3702 发送 WS-Discovery Probe。结果列表会显示设备 IP、ONVIF 服务 URL、收到响应的本地网卡和设备标识；同一设备的重复响应会自动合并。
+
+WS-Discovery 只发现设备地址，不会绕过设备认证。如果扫描不到设备，请确认摄像头已启用 ONVIF 发现、开发板防火墙允许 UDP 3702，并确认两端处于同一个二层网络。跨 VLAN、关闭发现或不响应 WS-Discovery 的设备仍可手动填写 ONVIF 服务 URL。
+
 ## 启动
 
 ```bash
@@ -93,6 +106,8 @@ nc -vz CAMERA_IP 554
 ```
 
 部分摄像头会禁用 ICMP，因此 ping 失败不能证明 ONVIF 或 RTSP 不可访问。
+
+自动扫描使用本地多播，通常不会经过路由器转发。双网卡环境会分别在各活动 IPv4 网卡上发送发现请求，并在结果中标明响应所对应的网卡。
 
 ## 输出与安全
 

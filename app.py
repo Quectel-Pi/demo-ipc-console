@@ -122,6 +122,9 @@ def endpoint(text, service_name):
 
 def init_onvif():
     result = {"ok": False, "message": "Not tested"}
+    # A failed switch must not leave endpoints from the previously selected camera active.
+    with lock:
+        state.update(profile_token=None, ptz_url=None, snapshot_uri=None, media_url=None)
     try:
         runtime_log(f"Connecting to ONVIF service: {ONVIF_URL}")
         result["stage"] = "device information"

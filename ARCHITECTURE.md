@@ -9,12 +9,15 @@ Network Camera Console is a single-process native Linux application. `desktop_ap
 ```mermaid
 flowchart LR
     subgraph Camera[IP Camera]
+        Discovery[WS-Discovery]
         ONVIF[ONVIF SOAP]
         RTSP[RTSP Stream]
     end
 
     subgraph Host[Linux Host]
         GTK[GTK3 UI]
+        Scanner[Device Discovery Worker]
+        DiscoveryCore[ONVIF Discovery Module]
         Preview[OpenCV Preview Worker]
         PTZ[PTZ Command Queue]
         Core[Python Camera Core]
@@ -24,6 +27,9 @@ flowchart LR
 
     GTK --> Preview
     GTK --> PTZ
+    GTK --> Scanner
+    Scanner --> DiscoveryCore
+    DiscoveryCore -->|IPv4 UDP multicast 3702| Discovery
     PTZ --> Core
     Core -->|SOAP over HTTP/HTTPS| ONVIF
     Preview -->|RTSP over TCP| RTSP
@@ -43,13 +49,35 @@ ONVIF and RTSP are independent. RTSP provides preview and recording; ONVIF provi
 | UI runtime | GLib/GDK | Main loop, thread-safe updates, keyboard and pointer input |
 | Preview | OpenCV with FFmpeg backend, GdkPixbuf | Decode, resize and render RTSP frames |
 | Core | Python 3 standard library | Configuration, networking, SOAP and worker orchestration |
-| ONVIF | SOAP 1.2, HTTP Digest, WS-Security PasswordDigest | Discovery, profiles, stream URI and PTZ |
+| ONVIF discovery | WS-Discovery, IPv4 UDP multicast, ElementTree | Scan active interfaces, parse device addresses and deduplicate results |
+| ONVIF control | SOAP 1.2, HTTP Digest, WS-Security PasswordDigest | Device information, profiles, stream URI and PTZ |
 | Recording | FFmpeg | Copy H.264/HEVC video and convert audio to AAC |
 | Storage | Local filesystem | MP4 recordings and JPEG snapshots |
 
 The frontend and backend are modules inside one Python process, not separate services.
 
 ## Runtime flow
+
+### Automatic device discovery
+
+```mermaid
+sequenceDiagram
+    participant UI as GTK Discovery Dialog
+    participant Scanner as onvif_discovery.py
+    participant Camera as ONVIF Camera
+    UI->>Scanner: Start scan (4 seconds)
+    Scanner->>Scanner: Enumerate active non-loopback IPv4 interfaces
+    Scanner->>Camera: Send WS-Discovery Probe on each interface
+    Camera-->>Scanner: ProbeMatches (UUID, XAddrs, Scopes)
+    Scanner->>Scanner: Deduplicate by UUID or XAddr
+    Scanner-->>UI: Return device list
+    UI->>UI: User selects a device
+    UI->>Camera: Connect to the selected XAddr with UI credentials
+```
+
+Discovery runs in a worker thread so the GTK main loop remains responsive. The module sends two `NetworkVideoTransmitter` Probe rounds to `239.255.255.250:3702` and displays the response source IP, ONVIF service URL, local interface and device identifier. Selecting a result copies its service URL into the main window and starts the existing ONVIF initialization flow.
+
+WS-Discovery locates devices but does not carry credentials. Device metadata, media profiles, RTSP addresses and PTZ capabilities are still retrieved with the username and password entered in the main window.
 
 ### ONVIF
 
@@ -90,6 +118,7 @@ Camera-provided service addresses are preferred. If `GetSnapshotUri` is unsuppor
 | Context | Responsibility |
 | --- | --- |
 | GTK main thread | UI rendering and input |
+| Device discovery worker | Enumerate IPv4 interfaces, send Probes, collect and parse ProbeMatches |
 | ONVIF worker | Blocking SOAP initialization |
 | Preview worker | RTSP decoding and frame preparation |
 | PTZ worker | Ordered SOAP movement commands |
@@ -100,6 +129,7 @@ Camera-provided service addresses are preferred. If `GetSnapshotUri` is unsuppor
 
 ```text
 app.py                  ONVIF, network and recording helpers
+onvif_discovery.py      IPv4 WS-Discovery scan, response parsing and device deduplication
 desktop_app.py          GTK application and workers
 run_desktop.sh          Environment loader and launcher
 .env.example            Public configuration template
@@ -136,5 +166,7 @@ sudo apt install python3 python3-gi gir1.2-gtk-3.0 python3-opencv ffmpeg
 - One credential pair exposed by the current UI
 - Lightweight regular-expression ONVIF XML extraction
 - No automatic hardware-decoder selection
-- No WS-Discovery, presets, patrol, retention policy or disk quota
+- Automatic discovery currently supports IPv4 on the local Layer 2 network; devices across VLANs usually require a manually entered service URL
+- Devices with WS-Discovery disabled or UDP port 3702 blocked cannot be discovered automatically
+- No IPv6 discovery, presets, patrol, retention policy or disk quota
 

@@ -17,12 +17,22 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, Gdk, GdkPixbuf, GLib
 
 import app as camera
+import onvif_discovery
 
 if hasattr(cv2, "setLogLevel"):
     cv2.setLogLevel(0)
 
 APP_CSS = b"""
 window { background-color: #060612; color: #dbeafe; }
+dialog.discovery-dialog { background-color: #060612; color: #dbeafe; }
+dialog.discovery-dialog headerbar { background-image: none; background-color: #090718; border-bottom: 1px solid #4d2d7f; box-shadow: 0 2px 10px #02020a; }
+dialog.discovery-dialog headerbar label { color: #00f5ff; }
+dialog.discovery-dialog .dialog-hint { color: #a78bfa; font-size: 13px; }
+dialog.discovery-dialog scrolledwindow { background-color: #090817; border: 1px solid #35285c; border-radius: 10px; }
+dialog.discovery-dialog treeview.view { color: #dbeafe; background-color: #090817; }
+dialog.discovery-dialog treeview.view:selected { color: #00f5ff; background-color: #10343d; }
+dialog.discovery-dialog treeview header button { color: #00f5ff; background-color: #17132f; border-color: #4a3a78; border-radius: 5px; }
+dialog.discovery-dialog button.dialog-cancel { color: #a78bfa; }
 headerbar.app-header { background-image: none; background-color: #090718; border-bottom: 1px solid #4d2d7f; box-shadow: 0 2px 10px #02020a; }
 headerbar.app-header label { color: #00f5ff; }
 headerbar.app-header .subtitle { color: #a78bfa; }
@@ -44,10 +54,12 @@ button:active { background-color: #30255a; border-color: #ff2bd6; }
 .record:hover { color: #ffd1f4; border-color: #ff2bd6; box-shadow: 0 0 7px #8f176f; }
 .recording { color: #ffffff; background-color: #d414a1; border-color: #ff62df; box-shadow: 0 0 10px #a10c78; }
 .ptz-button { min-width: 58px; min-height: 58px; padding: 0; border-radius: 29px; font-size: 22px; }
+.ptz-button.compact { min-width: 42px; min-height: 42px; font-size: 18px; }
 .ptz-button:hover { color: #00f5ff; border-color: #00dce7; box-shadow: 0 0 8px #006b73; }
 .ptz-stop { color: #ff65df; background-color: #281126; border-color: #8e2674; font-size: 13px; font-weight: 700; }
 .ptz-stop:hover { color: #ffffff; background-color: #d414a1; border-color: #ff65df; box-shadow: 0 0 9px #a10c78; }
 .zoom-button { min-width: 108px; }
+.zoom-button.compact { min-width: 88px; min-height: 32px; padding: 0 8px; }
 .badge { padding: 5px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; }
 .offline { color: #8c96b5; background-color: #19162e; border: 1px solid #332a55; }
 .online { color: #00f5ff; background-color: #09262c; border: 1px solid #007e88; box-shadow: 0 0 6px #005862; }
@@ -68,8 +80,16 @@ def add_style(widget, *names):
 class CameraWindow(Gtk.Window):
     def __init__(self):
         super().__init__(title="Network Camera Console")
-        self.set_default_size(1220, 800)
-        self.set_size_request(960, 680)
+        display = Gdk.Display.get_default()
+        monitor = display.get_primary_monitor() if display else None
+        geometry = monitor.get_geometry() if monitor else None
+        screen_width = geometry.width if geometry else 1280
+        screen_height = geometry.height if geometry else 800
+        self.compact_ui = screen_height < 900 or screen_width < 1200
+        self.set_default_size(min(1220, screen_width - 32), min(740, screen_height - 60))
+        self.set_size_request(min(800, screen_width - 32), min(540, screen_height - 60))
+        self.set_decorated(True)
+        self.set_resizable(True)
         titlebar = Gtk.HeaderBar()
         titlebar.set_title("Network Camera Console")
         titlebar.set_subtitle("ONVIF · RTSP CAMERA")
@@ -106,9 +126,10 @@ class CameraWindow(Gtk.Window):
         )
 
     def _build_ui(self):
-        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
-        root.set_margin_top(20); root.set_margin_bottom(20)
-        root.set_margin_start(22); root.set_margin_end(22)
+        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8 if self.compact_ui else 14)
+        margin = 10 if self.compact_ui else 20
+        root.set_margin_top(margin); root.set_margin_bottom(margin)
+        root.set_margin_start(margin + 2); root.set_margin_end(margin + 2)
         self.add(root)
         header = Gtk.Box(spacing=12)
         titles = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
@@ -129,7 +150,10 @@ class CameraWindow(Gtk.Window):
         settings.attach(onvif_label, 0, 0, 1, 1)
         self.onvif_entry = Gtk.Entry(); self.onvif_entry.set_text(camera.ONVIF_URL)
         self.onvif_entry.set_tooltip_text("Full URL, e.g. http://192.0.2.10:80/onvif/device_service")
-        settings.attach(self.onvif_entry, 1, 0, 5, 1)
+        settings.attach(self.onvif_entry, 1, 0, 4, 1)
+        self.scan_button = Gtk.Button(label="Scan Devices")
+        self.scan_button.connect("clicked", self.scan_onvif_devices)
+        settings.attach(self.scan_button, 5, 0, 1, 1)
         rtsp_label = Gtk.Label(label="RTSP Stream URL"); rtsp_label.set_xalign(0)
         settings.attach(rtsp_label, 0, 1, 1, 1)
         rtsp_parts = urlsplit(camera.RTSP_URL)
@@ -155,12 +179,14 @@ class CameraWindow(Gtk.Window):
 
         body = Gtk.Box(spacing=14)
         root.pack_start(body, True, True, 0)
-        left = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12); add_style(left, "card")
+        left = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8 if self.compact_ui else 12); add_style(left, "card")
         body.pack_start(left, True, True, 0)
         preview_title = Gtk.Label(label="Live Preview"); preview_title.set_xalign(0); add_style(preview_title, "section-title")
         left.pack_start(preview_title, False, False, 0)
         self.video = Gtk.Image()
-        self.video.set_size_request(760, 430)
+        self.video.set_size_request(-1, -1)
+        self.video.set_hexpand(True)
+        self.video.set_vexpand(True)
         self.video.set_tooltip_text("RTSP live preview")
         self.video_overlay = Gtk.Overlay(); add_style(self.video_overlay, "video-shell")
         self.video_overlay.add(self.video)
@@ -183,16 +209,19 @@ class CameraWindow(Gtk.Window):
         add_style(self.record_button, "record")
         self.record_button.connect("clicked", self.toggle_record); buttons.pack_start(self.record_button, False, False, 0)
 
-        panel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12); add_style(panel, "card")
-        panel.set_size_request(310, -1); body.pack_start(panel, False, False, 0)
+        panel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6 if self.compact_ui else 12); add_style(panel, "card")
+        panel.set_size_request(270 if self.compact_ui else 310, -1); body.pack_start(panel, False, False, 0)
         panel_title = Gtk.Label(label="PTZ Control"); panel_title.set_xalign(0); add_style(panel_title, "section-title")
         panel.pack_start(panel_title, False, False, 0)
         hold_hint = Gtk.Label(label="Hold to move, release to stop"); hold_hint.set_xalign(0); add_style(hold_hint, "hint")
         panel.pack_start(hold_hint, False, False, 0)
-        grid = Gtk.Grid(column_spacing=9, row_spacing=9); grid.set_halign(Gtk.Align.CENTER)
+        grid_gap = 5 if self.compact_ui else 9
+        grid = Gtk.Grid(column_spacing=grid_gap, row_spacing=grid_gap); grid.set_halign(Gtk.Align.CENTER)
         controls = [(0,0,"↖","upleft"),(1,0,"↑","up"),(2,0,"↗","upright"),(0,1,"←","left"),(1,1,"●","stop"),(2,1,"→","right"),(0,2,"↙","downleft"),(1,2,"↓","down"),(2,2,"↘","downright")]
         for x,y,label,action in controls:
             b = Gtk.Button(label="STOP" if action == "stop" else label); add_style(b, "ptz-button")
+            if self.compact_ui:
+                add_style(b, "compact")
             b.set_tooltip_text("Stop PTZ" if action == "stop" else f"Hold to move {action}")
             if action == "stop":
                 add_style(b, "ptz-stop"); b.connect("clicked", self.stop_ptz)
@@ -209,6 +238,8 @@ class CameraWindow(Gtk.Window):
         zoom = Gtk.Box(spacing=8); zoom.set_halign(Gtk.Align.CENTER)
         for label, action in (("−  Zoom Out", "zoom_out"),("＋  Zoom In", "zoom_in")):
             b=Gtk.Button(label=label); add_style(b, "zoom-button")
+            if self.compact_ui:
+                add_style(b, "compact")
             b.connect("pressed",self.start_ptz,action); b.connect("released",self.stop_ptz); zoom.pack_start(b,False,False,0)
         panel.pack_start(zoom, False, False, 0)
         keyboard_hint = Gtk.Label(label="Shortcuts: Arrows / WASD · Q/E zoom · Space stop")
@@ -351,6 +382,83 @@ class CameraWindow(Gtk.Window):
             GLib.idle_add(self.connection_result, result)
         threading.Thread(target=worker, daemon=True).start()
 
+    def scan_onvif_devices(self, *_args):
+        dialog = Gtk.Dialog(title="Discover ONVIF Devices", transient_for=self, flags=Gtk.DialogFlags.MODAL)
+        add_style(dialog, "discovery-dialog")
+        titlebar = Gtk.HeaderBar()
+        titlebar.set_title("ONVIF DEVICE SCAN")
+        titlebar.set_subtitle("WS-DISCOVERY · IPV4 NETWORK")
+        titlebar.set_show_close_button(True)
+        add_style(titlebar, "app-header")
+        dialog.set_titlebar(titlebar)
+        cancel_button = dialog.add_button("Cancel", Gtk.ResponseType.CANCEL)
+        add_style(cancel_button, "dialog-cancel")
+        use_button = dialog.add_button("Use Selected Device", Gtk.ResponseType.ACCEPT)
+        add_style(use_button, "primary")
+        use_button.set_sensitive(False)
+        dialog.set_default_size(760, 360)
+        content = dialog.get_content_area()
+        content.set_spacing(8)
+        content.set_margin_top(12); content.set_margin_bottom(12)
+        content.set_margin_start(14); content.set_margin_end(14)
+        hint = Gtk.Label(label="Searching active IPv4 network interfaces for ONVIF cameras…")
+        hint.set_xalign(0)
+        add_style(hint, "dialog-hint")
+        content.pack_start(hint, False, False, 8)
+        store = Gtk.ListStore(str, str, str, str)
+        tree = Gtk.TreeView(model=store)
+        for index, title in enumerate(("IP Address", "ONVIF Service URL", "Interface", "Device ID")):
+            renderer = Gtk.CellRendererText()
+            column = Gtk.TreeViewColumn(title, renderer, text=index)
+            column.set_resizable(True)
+            if index == 1:
+                column.set_expand(True)
+            tree.append_column(column)
+        tree.get_selection().set_mode(Gtk.SelectionMode.SINGLE)
+        tree.set_enable_search(True)
+        tree.get_selection().connect("changed", lambda selection: use_button.set_sensitive(bool(selection.get_selected()[1])))
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        scroll.add(tree)
+        content.pack_start(scroll, True, True, 0)
+        dialog.show_all()
+        dialog_state = {"closed": False}
+
+        def finish_scan(devices, error=None):
+            if dialog_state["closed"]:
+                return False
+            store.clear()
+            if error:
+                hint.set_text(f"Discovery failed: {error}")
+            elif not devices:
+                hint.set_text("No ONVIF devices found. Check that discovery is enabled and UDP 3702 is allowed.")
+            else:
+                hint.set_text(f"Found {len(devices)} ONVIF device(s). Select one to use its service URL.")
+                for device in devices:
+                    url = device["xaddrs"][0]
+                    store.append((device["source_ip"], url, device["interface"], device["endpoint_id"]))
+            return False
+
+        def scan_worker():
+            try:
+                devices = onvif_discovery.discover(timeout=4.0, rounds=2)
+                GLib.idle_add(finish_scan, devices)
+            except Exception as exc:
+                GLib.idle_add(finish_scan, [], str(exc))
+
+        threading.Thread(target=scan_worker, daemon=True).start()
+        response = dialog.run()
+        selected_url = None
+        if response == Gtk.ResponseType.ACCEPT:
+            model, iterator = tree.get_selection().get_selected()
+            if iterator:
+                selected_url = model.get_value(iterator, 1)
+        dialog_state["closed"] = True
+        dialog.destroy()
+        if selected_url:
+            self.onvif_entry.set_text(selected_url)
+            self.connect_camera()
+
     def connection_result(self, result):
         self.connect_button.set_sensitive(True)
         if result.get("ok"):
@@ -457,7 +565,15 @@ class CameraWindow(Gtk.Window):
     def show_frame(self, data):
         loader=GdkPixbuf.PixbufLoader.new_with_type("jpeg")
         try:
-            loader.write(data); loader.close(); self.video.set_from_pixbuf(loader.get_pixbuf())
+            loader.write(data); loader.close()
+            pixbuf = loader.get_pixbuf()
+            width = max(1, self.video_overlay.get_allocated_width())
+            height = max(1, self.video_overlay.get_allocated_height())
+            factor = min(width / pixbuf.get_width(), height / pixbuf.get_height())
+            scaled_width = max(1, int(pixbuf.get_width() * factor))
+            scaled_height = max(1, int(pixbuf.get_height() * factor))
+            scaled = pixbuf.scale_simple(scaled_width, scaled_height, GdkPixbuf.InterpType.BILINEAR)
+            self.video.set_from_pixbuf(scaled or pixbuf)
         except Exception: pass
         return False
 
