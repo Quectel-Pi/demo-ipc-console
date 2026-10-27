@@ -1,0 +1,2 @@
+# PyGObject/GTK and FFmpeg are installed through the operating system.
+opencv-python>=4.8,<6

@@ -12,7 +12,7 @@ import urllib.error
 import urllib.request
 import datetime
 
-ROOT = Path(__file__).parent
+ROOT = Path(__file__).resolve().parent.parent
 RECORDINGS = ROOT / "recordings"
 SNAPSHOTS = ROOT / "snapshots"
 RECORDINGS.mkdir(exist_ok=True)

@@ -2,7 +2,10 @@
 
 A lightweight native Linux application for viewing and controlling ONVIF/RTSP IP cameras. It uses GTK3 for the desktop interface, OpenCV for live preview, ONVIF SOAP services for PTZ control, and FFmpeg for recording.
 
-[中文说明](README.zh-CN.md)
+[中文说明](README.zh-CN.md) · [Architecture](docs/ARCHITECTURE.md)
+
+![Network Camera Console](images/demo-ipc-console.png)
+
 ## Features
 
 - Native GTK3 Linux interface with a cyberpunk theme
@@ -46,6 +49,13 @@ sudo apt update
 sudo apt install python3 python3-gi gir1.2-gtk-3.0 python3-opencv ffmpeg
 ```
 
+For a project-local OpenCV installation while reusing the system GTK bindings:
+
+```bash
+python3 -m venv --system-site-packages .venv
+.venv/bin/python -m pip install -r requirements.txt
+```
+
 ## Configuration
 
 Copy the public template and replace all example values with your camera settings:
@@ -82,7 +92,7 @@ WS-Discovery only locates a device and does not bypass authentication. If no dev
 ## Run
 
 ```bash
-./run_desktop.sh
+./scripts/run_desktop.sh
 ```
 
 ONVIF and RTSP can be connected in either order. If the camera does not implement ONVIF `GetSnapshotUri`, start RTSP preview before taking a snapshot so the current frame can be saved.
@@ -116,6 +126,28 @@ Automatic discovery uses local multicast, which routers normally do not forward.
 - Never commit real credentials, private addresses or sensitive media.
 - Prefer a dedicated least-privilege camera account.
 
-## Technical support and contributions
+## Project layout
+
+```text
+src/        Application source code
+scripts/    Launch and maintenance scripts
+tests/      Standard-library unit tests
+docs/       English and Chinese architecture documents
+images/     Public documentation images
+```
+
+## Development
+
+Run the checks used by CI:
+
+```bash
+python3 -m compileall -q src
+python3 -m unittest discover -s tests -v
+bash -n scripts/run_desktop.sh
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Report security issues according to [SECURITY.md](SECURITY.md), not in a public issue.
+
+## Technical support
 
 If you encounter any problems during use, please submit a technical inquiry on the [Quectel official forum](https://forums.quectel.com/c/quectel-pi/80). The Quectel technical support team will respond promptly.

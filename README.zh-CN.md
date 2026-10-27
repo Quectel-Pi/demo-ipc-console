@@ -2,7 +2,9 @@
 
 一个轻量级 Linux 原生网络摄像头应用。应用使用 GTK3 构建桌面界面，使用 OpenCV 预览 RTSP 视频，通过 ONVIF SOAP 服务控制云台，并使用 FFmpeg 录像。
 
-[English README](README.md)
+[English README](README.md) · [架构说明](docs/ARCHITECTURE.zh-CN.md)
+
+![网络摄像头控制台](images/demo-ipc-console.png)
 
 ## 功能
 
@@ -47,6 +49,13 @@ sudo apt update
 sudo apt install python3 python3-gi gir1.2-gtk-3.0 python3-opencv ffmpeg
 ```
 
+如需在项目内安装 OpenCV，同时复用系统 GTK 绑定：
+
+```bash
+python3 -m venv --system-site-packages .venv
+.venv/bin/python -m pip install -r requirements.txt
+```
+
 ## 配置
 
 复制公开配置模板，并将示例值替换为自己的摄像头配置：
@@ -83,7 +92,7 @@ WS-Discovery 只发现设备地址，不会绕过设备认证。如果扫描不�
 ## 启动
 
 ```bash
-./run_desktop.sh
+./scripts/run_desktop.sh
 ```
 
 ONVIF 和 RTSP 没有连接顺序要求。如果摄像头不支持 ONVIF `GetSnapshotUri`，请先启动 RTSP 预览，再通过当前视频帧拍照。
@@ -117,6 +126,28 @@ nc -vz CAMERA_IP 554
 - 不要提交真实密码、私人地址或敏感视频。
 - 建议使用最小权限的摄像头专用账户。
 
-## 技术支持与贡献
+## 项目结构
+
+```text
+src/        应用源代码
+scripts/    启动与维护脚本
+tests/      基于 Python 标准库的单元测试
+docs/       中英文架构文档
+images/     可公开的文档图片
+```
+
+## 开发与测试
+
+运行与 CI 相同的检查：
+
+```bash
+python3 -m compileall -q src
+python3 -m unittest discover -s tests -v
+bash -n scripts/run_desktop.sh
+```
+
+提交 Pull Request 前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。安全问题请按照 [SECURITY.md](SECURITY.md) 私下报告，不要提交公开 Issue。
+
+## 技术支持
 
 如在使用过程中遇到问题，欢迎在[移远官方论坛](https://forumschinese.quectel.com/c/quectel-pi/58)提交技术咨询，移远技术支持团队将及时为您解答。

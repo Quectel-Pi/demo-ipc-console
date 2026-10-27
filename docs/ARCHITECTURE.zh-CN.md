@@ -128,10 +128,10 @@ sequenceDiagram
 ## 源码结构
 
 ```text
-app.py                  ONVIF、网络与录像辅助功能
-onvif_discovery.py      IPv4 WS-Discovery 扫描、响应解析和设备去重
-desktop_app.py          GTK 应用与工作线程
-run_desktop.sh          环境变量加载与启动脚本
+src/app.py              ONVIF、网络与录像辅助功能
+src/onvif_discovery.py  IPv4 WS-Discovery 扫描、响应解析和设备去重
+src/desktop_app.py      GTK 应用与工作线程
+scripts/run_desktop.sh  环境变量加载与启动脚本
 .env.example            公开配置模板
 recordings/             自动生成的 MP4 文件
 snapshots/              自动生成的 JPEG 文件

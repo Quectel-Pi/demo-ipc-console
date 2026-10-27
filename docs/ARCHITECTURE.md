@@ -128,10 +128,10 @@ Camera-provided service addresses are preferred. If `GetSnapshotUri` is unsuppor
 ## Source layout
 
 ```text
-app.py                  ONVIF, network and recording helpers
-onvif_discovery.py      IPv4 WS-Discovery scan, response parsing and device deduplication
-desktop_app.py          GTK application and workers
-run_desktop.sh          Environment loader and launcher
+src/app.py              ONVIF, network and recording helpers
+src/onvif_discovery.py  IPv4 WS-Discovery scan, response parsing and device deduplication
+src/desktop_app.py      GTK application and workers
+scripts/run_desktop.sh  Environment loader and launcher
 .env.example            Public configuration template
 recordings/             Generated MP4 files
 snapshots/              Generated JPEG files
