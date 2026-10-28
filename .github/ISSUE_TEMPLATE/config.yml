@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Technical support (English)
+    url: https://forums.quectel.com/c/quectel-pi/80
+    about: Ask camera setup and usage questions on the Quectel forum.
+  - name: 技术支持（中文）
+    url: https://forumschinese.quectel.com/c/quectel-pi/58
+    about: 在移远中文论坛咨询配置和使用问题。
